@@ -150,17 +150,34 @@ export function ChatArea({
                       </p>
                     )}
                     {message.file_url && (
-                      <a
-                        href={message.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`inline-flex items-center gap-2 rounded bg-[var(--bg-hover-secondary)] px-3 py-1 text-xs font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-input)] ${
-                          showHeader || message.body ? "mt-1" : ""
-                        }`}
-                      >
-                        <Paperclip className="h-4 w-4" />
-                        Attachment
-                      </a>
+                      /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(
+                        message.file_url,
+                      ) ? (
+                        <a
+                          href={message.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`inline-block ${showHeader || message.body ? "mt-1" : ""}`}
+                        >
+                          <img
+                            src={message.file_url}
+                            alt="Attachment"
+                            className="max-h-60 max-w-xs rounded-lg object-cover"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          href={message.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`inline-flex items-center gap-2 rounded bg-[var(--bg-hover-secondary)] px-3 py-1 text-xs font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-input)] ${
+                            showHeader || message.body ? "mt-1" : ""
+                          }`}
+                        >
+                          <Paperclip className="h-4 w-4" />
+                          Attachment
+                        </a>
+                      )
                     )}
                   </div>
                 </div>

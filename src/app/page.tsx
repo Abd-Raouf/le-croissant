@@ -734,14 +734,21 @@ export default function Home() {
   );
 
   const toggleMute = useCallback(() => {
-    const audioStream = localAudioRef.current;
-    if (!audioStream) return;
     const nextMuted = !isMuted;
-    audioStream.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted;
-    });
+    const audioStream = localAudioRef.current;
+    if (audioStream) {
+      audioStream.getAudioTracks().forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
+    const screenStream = localScreenStream;
+    if (screenStream) {
+      screenStream.getAudioTracks().forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
     setIsMuted(nextMuted);
-  }, [isMuted]);
+  }, [isMuted, localScreenStream]);
 
   const toggleDeafen = useCallback(() => {
     setIsDeafened((prev) => !prev);
