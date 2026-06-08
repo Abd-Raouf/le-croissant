@@ -653,15 +653,18 @@ export default function Home() {
   }, [currentUserId, endCall, sendSignal]);
 
   const getAudioConstraints = useCallback((): MediaStreamConstraints => {
-    const audioConstraints: MediaTrackConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    };
     if (audioInputDeviceId) {
-      audioConstraints.deviceId = { exact: audioInputDeviceId };
+      return {
+        audio: {
+          deviceId: { exact: audioInputDeviceId },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      };
     }
-    return { audio: audioConstraints, video: false };
+    return { audio: true, video: false };
   }, [audioInputDeviceId]);
 
   const startCall = useCallback(async () => {
@@ -671,7 +674,12 @@ export default function Home() {
       const peer = ensurePeerConnection();
 
       if (!localAudioRef.current) {
-        const audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+        let audioStream: MediaStream;
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+        } catch {
+          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
         localAudioRef.current = audioStream;
         audioStream.getAudioTracks().forEach((track) => {
           peer.addTrack(track, audioStream);
@@ -810,26 +818,35 @@ export default function Home() {
   const acceptCall = useCallback(async () => {
     stopRingtone();
     if (!incomingOffer || !incomingCallerId) return;
-    const peer = ensurePeerConnection();
-    if (!localAudioRef.current) {
-      const audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-      localAudioRef.current = audioStream;
-      audioStream.getAudioTracks().forEach((track) => {
-        peer.addTrack(track, audioStream);
-      });
-    }
-    await peer.setRemoteDescription(incomingOffer);
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-    await sendSignal({
-      type: "answer",
-      senderId: currentUserId!,
+    try {
+      const peer = ensurePeerConnection();
+      if (!localAudioRef.current) {
+        let audioStream: MediaStream;
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+        } catch {
+          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        localAudioRef.current = audioStream;
+        audioStream.getAudioTracks().forEach((track) => {
+          peer.addTrack(track, audioStream);
+        });
+      }
+      await peer.setRemoteDescription(incomingOffer);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      await sendSignal({
+        type: "answer",
+        senderId: currentUserId!,
       data: answer,
     });
     setIsInCall(true);
     setCallState("active");
     setIncomingCallerId(null);
     setIncomingOffer(null);
+    } catch {
+      setCallError("Failed to accept call. Check microphone permissions.");
+    }
   }, [currentUserId, ensurePeerConnection, getAudioConstraints, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
 
   const declineCall = useCallback(async () => {
