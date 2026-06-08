@@ -155,6 +155,7 @@ export default function Home() {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const localAudioRef = useRef<MediaStream | null>(null);
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
 
   const currentUserId = session?.user.id ?? null;
 
@@ -587,6 +588,7 @@ export default function Home() {
       localScreenStream?.getTracks().forEach((track) => track.stop());
       setLocalScreenStream(null);
       screenSenderRef.current = null;
+      screenAudioSenderRef.current = null;
 
       if (peerRef.current) {
         peerRef.current.ontrack = null;
@@ -671,6 +673,10 @@ export default function Home() {
       peer.removeTrack(screenSenderRef.current);
       screenSenderRef.current = null;
     }
+    if (peer && screenAudioSenderRef.current) {
+      peer.removeTrack(screenAudioSenderRef.current);
+      screenAudioSenderRef.current = null;
+    }
 
     localScreenStream?.getTracks().forEach((track) => track.stop());
     setLocalScreenStream(null);
@@ -710,21 +716,22 @@ export default function Home() {
 
         const audioTrack = stream.getAudioTracks()[0];
         if (audioTrack) {
-          peer.addTrack(audioTrack, stream);
+          if (screenAudioSenderRef.current) {
+            peer.removeTrack(screenAudioSenderRef.current);
+          }
+          screenAudioSenderRef.current = peer.addTrack(audioTrack, stream);
         }
 
         setIsSharing(true);
 
-        if (peer.signalingState === "stable") {
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          await sendSignal({
-            type: "offer",
-            senderId: currentUserId,
-            data: offer,
-          });
-          setIsInCall(true);
-        }
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        await sendSignal({
+          type: "offer",
+          senderId: currentUserId,
+          data: offer,
+        });
+        setIsInCall(true);
       } catch (error) {
         setCallError("Unable to share your screen. Check permissions.");
       }
