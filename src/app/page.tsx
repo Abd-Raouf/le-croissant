@@ -692,21 +692,27 @@ export default function Home() {
         const peer = ensurePeerConnection();
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: screenShareConstraints[nextQuality],
-          audio: false,
+          audio: true,
         });
 
         setLocalScreenStream(stream);
-        const track = stream.getVideoTracks()[0];
-        if (!track) return;
+        const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack) return;
 
-        track.onended = () => {
+        videoTrack.onended = () => {
           void endScreenShare();
         };
 
         if (screenSenderRef.current) {
           peer.removeTrack(screenSenderRef.current);
         }
-        screenSenderRef.current = peer.addTrack(track, stream);
+        screenSenderRef.current = peer.addTrack(videoTrack, stream);
+
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          peer.addTrack(audioTrack, stream);
+        }
+
         setIsSharing(true);
 
         if (peer.signalingState === "stable") {
