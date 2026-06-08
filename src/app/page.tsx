@@ -652,6 +652,18 @@ export default function Home() {
     return peer;
   }, [currentUserId, endCall, sendSignal]);
 
+  const getAudioConstraints = useCallback((): MediaStreamConstraints => {
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+    if (audioInputDeviceId) {
+      audioConstraints.deviceId = { exact: audioInputDeviceId };
+    }
+    return { audio: audioConstraints, video: false };
+  }, [audioInputDeviceId]);
+
   const startCall = useCallback(async () => {
     if (!currentUserId || !selectedFriendId) return;
     setCallError(null);
@@ -659,11 +671,7 @@ export default function Home() {
       const peer = ensurePeerConnection();
 
       if (!localAudioRef.current) {
-        const constraints: MediaStreamConstraints = {
-          audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
-          video: false,
-        };
-        const audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+        const audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
         localAudioRef.current = audioStream;
         audioStream.getAudioTracks().forEach((track) => {
           peer.addTrack(track, audioStream);
@@ -679,7 +687,7 @@ export default function Home() {
     } catch (error) {
       setCallError("Unable to start the call. Check device permissions.");
     }
-  }, [audioInputDeviceId, currentUserId, ensurePeerConnection, playRingtone, selectedFriendId, sendSignal]);
+  }, [currentUserId, ensurePeerConnection, getAudioConstraints, playRingtone, selectedFriendId, sendSignal]);
 
   const endScreenShare = useCallback(async () => {
     const peer = peerRef.current;
@@ -804,11 +812,7 @@ export default function Home() {
     if (!incomingOffer || !incomingCallerId) return;
     const peer = ensurePeerConnection();
     if (!localAudioRef.current) {
-      const constraints: MediaStreamConstraints = {
-        audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
-        video: false,
-      };
-      const audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const audioStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
       localAudioRef.current = audioStream;
       audioStream.getAudioTracks().forEach((track) => {
         peer.addTrack(track, audioStream);
@@ -826,7 +830,7 @@ export default function Home() {
     setCallState("active");
     setIncomingCallerId(null);
     setIncomingOffer(null);
-  }, [audioInputDeviceId, currentUserId, ensurePeerConnection, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
+  }, [currentUserId, ensurePeerConnection, getAudioConstraints, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
 
   const declineCall = useCallback(async () => {
     stopRingtone();
