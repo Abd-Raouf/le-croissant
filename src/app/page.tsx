@@ -15,6 +15,7 @@ import { VideoCanvas } from "@/components/VideoCanvas";
 import { CallControls } from "@/components/CallControls";
 import { SettingsModal } from "@/components/SettingsModal";
 import { AvatarCropperModal } from "@/components/AvatarCropperModal";
+import { Phone, PhoneOff } from "lucide-react";
 
 type AuthView = "landing" | "sign-in" | "sign-up";
 
@@ -144,6 +145,11 @@ export default function Home() {
   const [isSharing, setIsSharing] = useState(false);
   const [quality, setQuality] = useState<ScreenShareQuality>("medium");
   const [callError, setCallError] = useState<string | null>(null);
+  const [callState, setCallState] = useState<"idle" | "ringing" | "incoming" | "active">("idle");
+  const [incomingCallerId, setIncomingCallerId] = useState<string | null>(null);
+  const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
+  const ringtoneRef = useRef<AudioContext | null>(null);
+  const ringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -537,8 +543,40 @@ export default function Home() {
     await channel.send({ type: "broadcast", event: "signal", payload });
   }, []);
 
+  const playRingtone = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      ringtoneRef.current = ctx;
+      let on = false;
+      const beep = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 440;
+        gain.gain.value = 0.3;
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+      };
+      beep();
+      ringIntervalRef.current = setInterval(beep, 1000);
+    } catch {}
+  }, []);
+
+  const stopRingtone = useCallback(() => {
+    if (ringIntervalRef.current) {
+      clearInterval(ringIntervalRef.current);
+      ringIntervalRef.current = null;
+    }
+    if (ringtoneRef.current) {
+      ringtoneRef.current.close().catch(() => {});
+      ringtoneRef.current = null;
+    }
+  }, []);
+
   const endCall = useCallback(
     async (notifyPeer: boolean) => {
+      stopRingtone();
       if (notifyPeer && currentUserId) {
         await sendSignal({ type: "hangup", senderId: currentUserId });
       }
@@ -560,8 +598,11 @@ export default function Home() {
       setIsInCall(false);
       setIsSharing(false);
       setIsMuted(false);
+      setCallState("idle");
+      setIncomingCallerId(null);
+      setIncomingOffer(null);
     },
-    [currentUserId, localScreenStream, sendSignal],
+    [currentUserId, localScreenStream, sendSignal, stopRingtone],
   );
 
   const ensurePeerConnection = useCallback(() => {
@@ -616,11 +657,13 @@ export default function Home() {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       await sendSignal({ type: "offer", senderId: currentUserId, data: offer });
+      setCallState("ringing");
       setIsInCall(true);
+      playRingtone();
     } catch (error) {
       setCallError("Unable to start the call. Check device permissions.");
     }
-  }, [currentUserId, ensurePeerConnection, selectedFriendId, sendSignal]);
+  }, [currentUserId, ensurePeerConnection, playRingtone, selectedFriendId, sendSignal]);
 
   const endScreenShare = useCallback(async () => {
     const peer = peerRef.current;
@@ -704,6 +747,62 @@ export default function Home() {
     setIsDeafened((prev) => !prev);
   }, []);
 
+  const cancelCall = useCallback(async () => {
+    stopRingtone();
+    if (currentUserId) {
+      await sendSignal({ type: "hangup", senderId: currentUserId });
+    }
+    if (peerRef.current) {
+      peerRef.current.ontrack = null;
+      peerRef.current.onicecandidate = null;
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+    localAudioRef.current?.getTracks().forEach((track) => track.stop());
+    localAudioRef.current = null;
+    setRemoteStream(null);
+    setIsInCall(false);
+    setCallState("idle");
+  }, [currentUserId, sendSignal, stopRingtone]);
+
+  const acceptCall = useCallback(async () => {
+    stopRingtone();
+    if (!incomingOffer || !incomingCallerId) return;
+    const peer = ensurePeerConnection();
+    if (!localAudioRef.current) {
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      localAudioRef.current = audioStream;
+      audioStream.getAudioTracks().forEach((track) => {
+        peer.addTrack(track, audioStream);
+      });
+    }
+    await peer.setRemoteDescription(incomingOffer);
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    await sendSignal({
+      type: "answer",
+      senderId: currentUserId!,
+      data: answer,
+    });
+    setIsInCall(true);
+    setCallState("active");
+    setIncomingCallerId(null);
+    setIncomingOffer(null);
+  }, [currentUserId, ensurePeerConnection, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
+
+  const declineCall = useCallback(async () => {
+    stopRingtone();
+    if (currentUserId && incomingCallerId) {
+      await sendSignal({ type: "hangup", senderId: currentUserId });
+    }
+    setIncomingCallerId(null);
+    setIncomingOffer(null);
+    setCallState("idle");
+  }, [currentUserId, incomingCallerId, sendSignal, stopRingtone]);
+
   const startVideoCall = useCallback(async () => {
     await startCall();
   }, [startCall]);
@@ -713,38 +812,26 @@ export default function Home() {
       if (!currentUserId || payload.senderId === currentUserId) return;
 
       if (payload.type === "hangup") {
+        stopRingtone();
         await endCall(false);
+        setCallState("idle");
         return;
       }
 
       const peer = ensurePeerConnection();
 
       if (payload.type === "offer") {
-        if (!localAudioRef.current) {
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false,
-          });
-          localAudioRef.current = audioStream;
-          audioStream.getAudioTracks().forEach((track) => {
-            peer.addTrack(track, audioStream);
-          });
-        }
-
-        await peer.setRemoteDescription(payload.data);
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
-        await sendSignal({
-          type: "answer",
-          senderId: currentUserId,
-          data: answer,
-        });
-        setIsInCall(true);
+        setIncomingCallerId(payload.senderId);
+        setIncomingOffer(payload.data);
+        setCallState("incoming");
+        playRingtone();
         return;
       }
 
       if (payload.type === "answer") {
+        stopRingtone();
         await peer.setRemoteDescription(payload.data);
+        setCallState("active");
         setIsInCall(true);
         return;
       }
@@ -753,7 +840,7 @@ export default function Home() {
         await peer.addIceCandidate(payload.data);
       }
     },
-    [currentUserId, endCall, ensurePeerConnection, sendSignal],
+    [currentUserId, endCall, ensurePeerConnection, playRingtone, sendSignal, stopRingtone],
   );
 
   useEffect(() => {
@@ -822,7 +909,7 @@ export default function Home() {
         setSession(data.session);
         const userId = data.user?.id;
         if (userId) {
-          const avatarUrl = await uploadAvatar(userId, authAvatarFile);
+          const { url: avatarUrl } = await uploadAvatar(userId, authAvatarFile);
           await supabase.from("profiles").upsert({
             id: userId,
             display_name: authDisplayName.trim(),
@@ -845,7 +932,7 @@ export default function Home() {
 
       const userId = data.user?.id;
       if (userId) {
-        const avatarUrl = await uploadAvatar(userId, authAvatarFile);
+        const { url: avatarUrl } = await uploadAvatar(userId, authAvatarFile);
         await supabase.from("profiles").upsert({
           id: userId,
           display_name: authDisplayName.trim(),
@@ -876,15 +963,15 @@ export default function Home() {
   };
 
   const uploadAvatar = async (userId: string, file: File | null) => {
-    if (!file) return null;
+    if (!file) return { url: null, error: null };
     const extension = file.name.split(".").pop() ?? "png";
     const path = `${userId}/${Date.now()}.${extension}`;
-    const { error } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("avatars")
       .upload(path, file, { upsert: true });
-    if (error) return null;
+    if (uploadError) return { url: null, error: uploadError.message };
     const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    return data.publicUrl;
+    return { url: data.publicUrl, error: null };
   };
 
   const uploadAttachment = async (userId: string, file: File | null) => {
@@ -936,7 +1023,12 @@ export default function Home() {
     if (!currentUserId) return false;
     setIsSavingProfile(true);
     setProfileError(null);
-    const avatarUrl = await uploadAvatar(currentUserId, input.avatarFile);
+    const { url: avatarUrl, error: avatarError } = await uploadAvatar(currentUserId, input.avatarFile);
+    if (avatarError) {
+      setProfileError(`Avatar upload failed: ${avatarError}`);
+      setIsSavingProfile(false);
+      return false;
+    }
     const { error } = await supabase.from("profiles").upsert({
       id: currentUserId,
       display_name: input.displayName.trim(),
@@ -1302,13 +1394,48 @@ export default function Home() {
               <CallControls
                 isInCall={isInCall}
                 isSharing={isSharing}
+                callState={callState}
                 onStartCall={startCall}
                 onStartVideoCall={startVideoCall}
                 onEndCall={() => endCall(true)}
+                onCancelCall={cancelCall}
+                onAcceptCall={acceptCall}
+                onDeclineCall={declineCall}
                 onToggleShare={handleToggleShare}
               />
             </div>
           </header>
+          {callState === "incoming" && incomingCallerId && (
+            <div className="mx-4 mt-2 flex items-center justify-between rounded-lg bg-[var(--accent)]/20 border border-[var(--accent)]/30 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)] animate-pulse">
+                  <Phone className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    Incoming call
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)]">
+                    {profileMap.get(incomingCallerId)?.display_name ?? "Unknown"} wants to call you
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={declineCall}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--danger)] text-white transition hover:bg-[#c93033]"
+                >
+                  <PhoneOff className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={acceptCall}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-green)] text-white transition hover:bg-[#1d9449]"
+                >
+                  <Phone className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
           {profileError && (
             <div className="mx-4 mt-2 rounded bg-[var(--accent-red)]/10 px-3 py-2 text-xs text-[var(--accent-red)]">
               {profileError}
