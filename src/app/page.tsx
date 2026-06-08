@@ -150,12 +150,15 @@ export default function Home() {
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
   const ringtoneRef = useRef<AudioContext | null>(null);
   const ringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [audioInputDeviceId, setAudioInputDeviceId] = useState("");
+  const [audioOutputDeviceId, setAudioOutputDeviceId] = useState("");
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const localAudioRef = useRef<MediaStream | null>(null);
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
   const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const currentUserId = session?.user.id ?? null;
 
@@ -596,6 +599,7 @@ export default function Home() {
         peerRef.current.close();
       }
       peerRef.current = null;
+      remoteStreamRef.current = null;
       setRemoteStream(null);
       setIsInCall(false);
       setIsSharing(false);
@@ -625,8 +629,17 @@ export default function Home() {
     };
 
     peer.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) setRemoteStream(stream);
+      if (!remoteStreamRef.current) {
+        remoteStreamRef.current = new MediaStream();
+      }
+      event.track.onended = () => {};
+      const alreadyAdded = remoteStreamRef.current.getTracks().some(
+        (t) => t.kind === event.track.kind && t.id === event.track.id,
+      );
+      if (!alreadyAdded) {
+        remoteStreamRef.current.addTrack(event.track);
+      }
+      setRemoteStream(remoteStreamRef.current);
     };
 
     peer.onconnectionstatechange = () => {
@@ -646,10 +659,11 @@ export default function Home() {
       const peer = ensurePeerConnection();
 
       if (!localAudioRef.current) {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
+        const constraints: MediaStreamConstraints = {
+          audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
           video: false,
-        });
+        };
+        const audioStream = await navigator.mediaDevices.getUserMedia(constraints);
         localAudioRef.current = audioStream;
         audioStream.getAudioTracks().forEach((track) => {
           peer.addTrack(track, audioStream);
@@ -665,7 +679,7 @@ export default function Home() {
     } catch (error) {
       setCallError("Unable to start the call. Check device permissions.");
     }
-  }, [currentUserId, ensurePeerConnection, playRingtone, selectedFriendId, sendSignal]);
+  }, [audioInputDeviceId, currentUserId, ensurePeerConnection, playRingtone, selectedFriendId, sendSignal]);
 
   const endScreenShare = useCallback(async () => {
     const peer = peerRef.current;
@@ -790,10 +804,11 @@ export default function Home() {
     if (!incomingOffer || !incomingCallerId) return;
     const peer = ensurePeerConnection();
     if (!localAudioRef.current) {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+      const constraints: MediaStreamConstraints = {
+        audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
         video: false,
-      });
+      };
+      const audioStream = await navigator.mediaDevices.getUserMedia(constraints);
       localAudioRef.current = audioStream;
       audioStream.getAudioTracks().forEach((track) => {
         peer.addTrack(track, audioStream);
@@ -811,7 +826,7 @@ export default function Home() {
     setCallState("active");
     setIncomingCallerId(null);
     setIncomingOffer(null);
-  }, [currentUserId, ensurePeerConnection, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
+  }, [audioInputDeviceId, currentUserId, ensurePeerConnection, incomingCallerId, incomingOffer, sendSignal, stopRingtone]);
 
   const declineCall = useCallback(async () => {
     stopRingtone();
@@ -1479,6 +1494,7 @@ export default function Home() {
                 selectedFriend={selectedFriend}
                 quality={quality}
                 onQualityChange={handleQualityChange}
+                audioOutputDeviceId={audioOutputDeviceId}
               />
             }
             compactMode={compactMode}
@@ -1497,6 +1513,10 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
         onSaveProfile={handleProfileUpdate}
         onSignOut={handleSignOut}
+        audioInputDeviceId={audioInputDeviceId}
+        audioOutputDeviceId={audioOutputDeviceId}
+        onAudioInputDeviceChange={setAudioInputDeviceId}
+        onAudioOutputDeviceChange={setAudioOutputDeviceId}
       />
     </div>
   );

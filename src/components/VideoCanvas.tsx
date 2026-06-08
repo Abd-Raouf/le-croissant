@@ -12,6 +12,7 @@ type VideoCanvasProps = {
   selectedFriend: ProfileRow | null;
   quality: ScreenShareQuality;
   onQualityChange: (quality: ScreenShareQuality) => void;
+  audioOutputDeviceId?: string;
 };
 
 export function VideoCanvas({
@@ -22,6 +23,7 @@ export function VideoCanvas({
   selectedFriend,
   quality,
   onQualityChange,
+  audioOutputDeviceId,
 }: VideoCanvasProps) {
   const mainRef = useRef<HTMLVideoElement | null>(null);
   const pipRef = useRef<HTMLVideoElement | null>(null);
@@ -41,6 +43,14 @@ export function VideoCanvas({
       pipRef.current.srcObject = pipStream;
     }
   }, [pipStream]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el || !audioOutputDeviceId) return;
+    if (typeof (el as HTMLMediaElement).setSinkId === "function") {
+      (el as HTMLMediaElement).setSinkId(audioOutputDeviceId).catch(() => {});
+    }
+  }, [audioOutputDeviceId]);
 
   if (!shouldRender) return null;
 

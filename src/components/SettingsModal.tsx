@@ -23,6 +23,10 @@ type SettingsModalProps = {
     statusMessage: string;
   }) => Promise<boolean>;
   onSignOut: () => Promise<void>;
+  audioInputDeviceId: string;
+  audioOutputDeviceId: string;
+  onAudioInputDeviceChange: (deviceId: string) => void;
+  onAudioOutputDeviceChange: (deviceId: string) => void;
 };
 
 const getInitials = (name: string) => {
@@ -48,6 +52,10 @@ export function SettingsModal({
   onClose,
   onSaveProfile,
   onSignOut,
+  audioInputDeviceId,
+  audioOutputDeviceId,
+  onAudioInputDeviceChange,
+  onAudioOutputDeviceChange,
 }: SettingsModalProps) {
   const [displayName, setDisplayName] = useState("");
   const [realName, setRealName] = useState("");
@@ -57,6 +65,7 @@ export function SettingsModal({
   const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [status, setStatus] = useState<ProfileRow["status"]>("online");
+  const [devices, setDevices] = useState<{ kind: string; id: string; label: string }[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -77,6 +86,17 @@ export function SettingsModal({
     setAvatarPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [avatarFile]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    navigator.mediaDevices.enumerateDevices().then((list) => {
+      setDevices(
+        list
+          .filter((d) => d.kind === "audioinput" || d.kind === "audiooutput")
+          .map((d) => ({ kind: d.kind, id: d.deviceId, label: d.label || d.kind })),
+      );
+    }).catch(() => {});
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -237,6 +257,48 @@ export function SettingsModal({
                   }`}
                 />
               </button>
+            </div>
+          </section>
+
+          <section className="mt-6 space-y-4">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">
+              Audio Devices
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]">
+                  Microphone
+                </label>
+                <select
+                  value={audioInputDeviceId}
+                  onChange={(event) => onAudioInputDeviceChange(event.target.value)}
+                  className="w-full rounded bg-[var(--bg-hover-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition focus:bg-[var(--bg-input)]"
+                >
+                  {devices.filter((d) => d.kind === "audioinput").map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                  {devices.filter((d) => d.kind === "audioinput").length === 0 && (
+                    <option value="">No microphones found</option>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]">
+                  Speaker
+                </label>
+                <select
+                  value={audioOutputDeviceId}
+                  onChange={(event) => onAudioOutputDeviceChange(event.target.value)}
+                  className="w-full rounded bg-[var(--bg-hover-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition focus:bg-[var(--bg-input)]"
+                >
+                  {devices.filter((d) => d.kind === "audiooutput").map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                  {devices.filter((d) => d.kind === "audiooutput").length === 0 && (
+                    <option value="">No speakers found</option>
+                  )}
+                </select>
+              </div>
             </div>
           </section>
 
