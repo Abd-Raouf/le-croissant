@@ -632,14 +632,13 @@ export default function Home() {
       if (!remoteStreamRef.current) {
         remoteStreamRef.current = new MediaStream();
       }
-      event.track.onended = () => {};
       const alreadyAdded = remoteStreamRef.current.getTracks().some(
-        (t) => t.kind === event.track.kind && t.id === event.track.id,
+        (t) => t.id === event.track.id,
       );
       if (!alreadyAdded) {
         remoteStreamRef.current.addTrack(event.track);
       }
-      setRemoteStream(remoteStreamRef.current);
+      setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
     };
 
     peer.onconnectionstatechange = () => {
@@ -877,8 +876,6 @@ export default function Home() {
         return;
       }
 
-      const peer = ensurePeerConnection();
-
       if (payload.type === "offer") {
         setIncomingCallerId(payload.senderId);
         setIncomingOffer(payload.data);
@@ -886,6 +883,9 @@ export default function Home() {
         playRingtone();
         return;
       }
+
+      const peer = peerRef.current;
+      if (!peer) return;
 
       if (payload.type === "answer") {
         stopRingtone();
@@ -896,10 +896,12 @@ export default function Home() {
       }
 
       if (payload.type === "ice") {
-        await peer.addIceCandidate(payload.data);
+        try {
+          await peer.addIceCandidate(payload.data);
+        } catch {}
       }
     },
-    [currentUserId, endCall, ensurePeerConnection, playRingtone, sendSignal, stopRingtone],
+    [currentUserId, endCall, playRingtone, sendSignal, stopRingtone],
   );
 
   useEffect(() => {

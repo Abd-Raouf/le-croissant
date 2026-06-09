@@ -33,10 +33,12 @@ export function VideoCanvas({
   const shouldRender = Boolean(isInCall || isSharing || mainStream);
 
   useEffect(() => {
-    if (mainRef.current) {
-      mainRef.current.srcObject = mainStream;
-    }
-  }, [mainStream]);
+    const el = mainRef.current;
+    if (!el || !mainStream) return;
+    el.srcObject = mainStream;
+    el.muted = !remoteStream;
+    el.play().catch(() => {});
+  }, [mainStream, remoteStream]);
 
   useEffect(() => {
     if (pipRef.current) {
