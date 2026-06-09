@@ -820,6 +820,9 @@ export default function Home() {
     if (!incomingOffer || !incomingCallerId) return;
     try {
       const peer = ensurePeerConnection();
+
+      await peer.setRemoteDescription(incomingOffer);
+
       if (!localAudioRef.current) {
         let audioStream: MediaStream;
         try {
@@ -832,18 +835,18 @@ export default function Home() {
           peer.addTrack(track, audioStream);
         });
       }
-      await peer.setRemoteDescription(incomingOffer);
+
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
       await sendSignal({
         type: "answer",
         senderId: currentUserId!,
-      data: answer,
-    });
-    setIsInCall(true);
-    setCallState("active");
-    setIncomingCallerId(null);
-    setIncomingOffer(null);
+        data: answer,
+      });
+      setIsInCall(true);
+      setCallState("active");
+      setIncomingCallerId(null);
+      setIncomingOffer(null);
     } catch {
       setCallError("Failed to accept call. Check microphone permissions.");
     }
