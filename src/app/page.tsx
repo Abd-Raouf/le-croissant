@@ -642,6 +642,7 @@ export default function Home() {
 
     peer.onicecandidate = (event) => {
       if (event.candidate && currentUserId) {
+        console.log("[ICE]", event.candidate.type, event.candidate.candidate);
         void sendSignal({
           type: "ice",
           senderId: currentUserId,
