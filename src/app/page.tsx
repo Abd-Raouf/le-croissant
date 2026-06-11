@@ -677,6 +677,7 @@ export default function Home() {
     };
 
     peerRef.current = peer;
+    (window as any).__pc = peer; // add this line
     return peer;
   }, [currentUserId, endCall, sendSignal]);
 
