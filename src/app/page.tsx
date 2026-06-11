@@ -618,24 +618,30 @@ export default function Home() {
   const ensurePeerConnection = useCallback(() => {
     if (peerRef.current) return peerRef.current;
 
+    const appId = process.env.NEXT_PUBLIC_CF_TURN_APP_ID;
+    const token = process.env.NEXT_PUBLIC_CF_TURN_TOKEN;
+
     const iceServers: RTCIceServer[] = [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      {
-        urls: "turn:openrelay.metered.ca:80",
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
-      {
-        urls: "turn:openrelay.metered.ca:443",
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
-      {
-        urls: "turn:openrelay.metered.ca:443?transport=tcp",
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
+      { urls: "stun:stun.cloudflare.com:3478" },
+      ...(appId && token
+        ? [
+            {
+              urls: "turn:turn.cloudflare.com:3478?transport=udp",
+              username: appId,
+              credential: token,
+            },
+            {
+              urls: "turn:turn.cloudflare.com:3478?transport=tcp",
+              username: appId,
+              credential: token,
+            },
+            {
+              urls: "turns:turn.cloudflare.com:5349?transport=tcp",
+              username: appId,
+              credential: token,
+            },
+          ]
+        : []),
     ];
 
     const peer = new RTCPeerConnection({ iceServers });
