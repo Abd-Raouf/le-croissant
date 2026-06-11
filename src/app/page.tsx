@@ -156,6 +156,8 @@ export default function Home() {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const signalQueueRef = useRef<SignalPayload[]>([]);
+  const processingSignalRef = useRef(false);
   const localAudioRef = useRef<MediaStream | null>(null);
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
   const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
@@ -619,21 +621,9 @@ export default function Home() {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        {
-          urls: "turn:openrelay.metered.ca:80",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-        {
-          urls: "turn:openrelay.metered.ca:443",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-        {
-          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
+        { urls: "turn:openrelay.metered.ca:80" },
+        { urls: "turn:openrelay.metered.ca:443" },
+        { urls: "turn:openrelay.metered.ca:443?transport=tcp" },
       ],
     });
 
@@ -936,12 +926,26 @@ export default function Home() {
     if (!isSupabaseConfigured) return;
     if (!currentUserId || !selectedFriendId) return;
 
+    const enqueueAndProcess = async () => {
+      if (processingSignalRef.current) return;
+      processingSignalRef.current = true;
+      while (signalQueueRef.current.length > 0) {
+        const payload = signalQueueRef.current.shift()!;
+        await handleSignal(payload);
+      }
+      processingSignalRef.current = false;
+      if (signalQueueRef.current.length > 0) {
+        void enqueueAndProcess();
+      }
+    };
+
     const channel = supabase
       .channel(callChannelName(currentUserId, selectedFriendId), {
         config: { broadcast: { ack: true } },
       })
       .on("broadcast", { event: "signal" }, ({ payload }) => {
-        void handleSignal(payload as SignalPayload);
+        signalQueueRef.current.push(payload as SignalPayload);
+        void enqueueAndProcess();
       });
 
     channel.subscribe();
