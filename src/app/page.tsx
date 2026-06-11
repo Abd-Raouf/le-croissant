@@ -162,7 +162,7 @@ export default function Home() {
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
   const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
-  const turnCredsRef = useRef<{ username: string; credential: string } | null>(null);
+
 
   const currentUserId = session?.user.id ?? null;
 
@@ -498,12 +498,6 @@ export default function Home() {
   }, [friends, selectedFriendId]);
 
   useEffect(() => {
-    if (currentUserId) {
-      void initTurnCredentials("openrelayprojectsecret", currentUserId);
-    }
-  }, [currentUserId]);
-
-  useEffect(() => {
     if (!isSupabaseConfigured) return;
     if (!currentUserId || !selectedFriendId) {
       setMessages([]);
@@ -621,45 +615,28 @@ export default function Home() {
     [currentUserId, localScreenStream, sendSignal, stopRingtone],
   );
 
-  async function initTurnCredentials(secret: string, userId: string) {
-    try {
-      const ttl = 86400;
-      const timestamp = Math.floor(Date.now() / 1000) + ttl;
-      const hmacUsername = `${timestamp}:${userId}`;
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "SHA-1" },
-        false,
-        ["sign"],
-      );
-      const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(hmacUsername));
-      const credential = btoa(String.fromCharCode(...new Uint8Array(signature)));
-      turnCredsRef.current = { username: hmacUsername, credential };
-    } catch {
-      turnCredsRef.current = null;
-    }
-  }
-
   const ensurePeerConnection = useCallback(() => {
     if (peerRef.current) return peerRef.current;
 
     const iceServers: RTCIceServer[] = [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
     ];
-    if (turnCredsRef.current) {
-      iceServers.push({
-        urls: [
-          "turn:staticauth.openrelay.metered.ca:80",
-          "turn:staticauth.openrelay.metered.ca:443",
-          "turn:staticauth.openrelay.metered.ca:443?transport=tcp",
-        ],
-        username: turnCredsRef.current.username,
-        credential: turnCredsRef.current.credential,
-      });
-    }
 
     const peer = new RTCPeerConnection({ iceServers });
 
