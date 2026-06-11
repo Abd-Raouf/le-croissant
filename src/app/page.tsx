@@ -701,7 +701,7 @@ export default function Home() {
       setIsInCall(true);
       playRingtone();
     } catch (error) {
-      setCallError("Unable to start the call. Check device permissions.");
+      setCallError(`Unable to start the call: ${error instanceof Error ? error.message : "Check device permissions."}`);
     }
   }, [currentUserId, ensurePeerConnection, getAudioConstraints, playRingtone, selectedFriendId, sendSignal]);
 
