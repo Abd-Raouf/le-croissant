@@ -547,7 +547,7 @@ export default function Home() {
   const sendSignal = useCallback(async (payload: SignalPayload) => {
     const channel = channelRef.current;
     if (!channel) return;
-    await channel.send({ type: "broadcast", event: "signal", payload });
+    try { await channel.send({ type: "broadcast", event: "signal", payload }); } catch {}
   }, []);
 
   const playRingtone = useCallback(() => {
@@ -621,9 +621,21 @@ export default function Home() {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "turn:openrelay.metered.ca:80" },
-        { urls: "turn:openrelay.metered.ca:443" },
-        { urls: "turn:openrelay.metered.ca:443?transport=tcp" },
+        {
+          urls: "turn:openrelay.metered.ca:80",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
       ],
     });
 
@@ -931,7 +943,7 @@ export default function Home() {
       processingSignalRef.current = true;
       while (signalQueueRef.current.length > 0) {
         const payload = signalQueueRef.current.shift()!;
-        await handleSignal(payload);
+        try { await handleSignal(payload); } catch {}
       }
       processingSignalRef.current = false;
       if (signalQueueRef.current.length > 0) {
