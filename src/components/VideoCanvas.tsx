@@ -37,7 +37,7 @@ export function VideoCanvas({
     if (!el || !mainStream) return;
     el.srcObject = mainStream;
     el.muted = !remoteStream;
-    el.play().catch(() => {});
+    el.play().catch((err) => console.error("[VideoCanvas] play failed:", err));
   }, [mainStream, remoteStream]);
 
   useEffect(() => {
