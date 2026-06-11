@@ -155,6 +155,7 @@ export default function Home() {
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const localAudioRef = useRef<MediaStream | null>(null);
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
   const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
@@ -840,6 +841,12 @@ export default function Home() {
 
       await peer.setRemoteDescription(incomingOffer);
 
+      // flush buffered ICE candidates
+      for (const c of pendingIceCandidatesRef.current) {
+        try { await peer.addIceCandidate(c); } catch {}
+      }
+      pendingIceCandidatesRef.current = [];
+
       if (!localAudioRef.current) {
         let audioStream: MediaStream;
         try {
@@ -914,9 +921,12 @@ export default function Home() {
       }
 
       if (payload.type === "ice") {
-        try {
-          await peer.addIceCandidate(payload.data);
-        } catch {}
+        const peer = peerRef.current;
+        if (peer) {
+          try { await peer.addIceCandidate(payload.data); } catch {}
+        } else {
+          pendingIceCandidatesRef.current.push(payload.data);
+        }
       }
     },
     [currentUserId, endCall, playRingtone, sendSignal, stopRingtone],
