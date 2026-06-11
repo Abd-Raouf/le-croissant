@@ -162,7 +162,7 @@ export default function Home() {
   const screenSenderRef = useRef<RTCRtpSender | null>(null);
   const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
-
+  const turnCredentialsRef = useRef<RTCIceServer[] | null>(null);
 
   const currentUserId = session?.user.id ?? null;
 
@@ -498,6 +498,23 @@ export default function Home() {
   }, [friends, selectedFriendId]);
 
   useEffect(() => {
+    fetch("/api/turn-credentials")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.iceServers?.length) {
+          turnCredentialsRef.current = data.iceServers;
+          console.log("[TURN] fetched", data.iceServers.length, "servers");
+        } else {
+          turnCredentialsRef.current = [{ urls: "stun:stun.cloudflare.com:3478" }];
+        }
+      })
+      .catch((err) => {
+        console.error("[TURN] fetch failed:", err);
+        turnCredentialsRef.current = [{ urls: "stun:stun.cloudflare.com:3478" }];
+      });
+  }, []);
+
+  useEffect(() => {
     if (!isSupabaseConfigured) return;
     if (!currentUserId || !selectedFriendId) {
       setMessages([]);
@@ -618,24 +635,10 @@ export default function Home() {
   const ensurePeerConnection = useCallback(() => {
     if (peerRef.current) return peerRef.current;
 
-    const appId = process.env.NEXT_PUBLIC_CF_TURN_APP_ID || "5a48ca18d6b3e074382d4a76f57a094c";
-    const token = process.env.NEXT_PUBLIC_CF_TURN_TOKEN || "ffabce2552a2ddbe99a9fcecb967cf6c49e7bf53dae7f89ab0cb364afcd4370a";
-    console.log("[TURN] appId:", appId.slice(0, 8), "hasToken:", !!token);
+    const servers = turnCredentialsRef.current || [{ urls: "stun:stun.cloudflare.com:3478" }];
+    console.log("[TURN] using", servers.length, "ICE servers");
 
-    const iceServers: RTCIceServer[] = [
-      { urls: "stun:stun.cloudflare.com:3478" },
-      {
-        urls: [
-          "turn:turn.cloudflare.com:3478?transport=udp",
-          "turn:turn.cloudflare.com:3478?transport=tcp",
-          "turns:turn.cloudflare.com:5349?transport=tcp",
-        ],
-        username: appId,
-        credential: token,
-      },
-    ];
-
-    const peer = new RTCPeerConnection({ iceServers });
+    const peer = new RTCPeerConnection({ iceServers: servers });
 
     peer.onicecandidate = (event) => {
       if (event.candidate && currentUserId) {
