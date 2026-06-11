@@ -618,30 +618,21 @@ export default function Home() {
   const ensurePeerConnection = useCallback(() => {
     if (peerRef.current) return peerRef.current;
 
-    const appId = process.env.NEXT_PUBLIC_CF_TURN_APP_ID;
-    const token = process.env.NEXT_PUBLIC_CF_TURN_TOKEN;
+    const appId = process.env.NEXT_PUBLIC_CF_TURN_APP_ID || "5a48ca18d6b3e074382d4a76f57a094c";
+    const token = process.env.NEXT_PUBLIC_CF_TURN_TOKEN || "ffabce2552a2ddbe99a9fcecb967cf6c49e7bf53dae7f89ab0cb364afcd4370a";
+    console.log("[TURN] appId:", appId.slice(0, 8), "hasToken:", !!token);
 
     const iceServers: RTCIceServer[] = [
       { urls: "stun:stun.cloudflare.com:3478" },
-      ...(appId && token
-        ? [
-            {
-              urls: "turn:turn.cloudflare.com:3478?transport=udp",
-              username: appId,
-              credential: token,
-            },
-            {
-              urls: "turn:turn.cloudflare.com:3478?transport=tcp",
-              username: appId,
-              credential: token,
-            },
-            {
-              urls: "turns:turn.cloudflare.com:5349?transport=tcp",
-              username: appId,
-              credential: token,
-            },
-          ]
-        : []),
+      {
+        urls: [
+          "turn:turn.cloudflare.com:3478?transport=udp",
+          "turn:turn.cloudflare.com:3478?transport=tcp",
+          "turns:turn.cloudflare.com:5349?transport=tcp",
+        ],
+        username: appId,
+        credential: token,
+      },
     ];
 
     const peer = new RTCPeerConnection({ iceServers });
